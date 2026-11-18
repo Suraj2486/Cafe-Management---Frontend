@@ -1,32 +1,30 @@
 import axios from "axios";
-import Cookies from 'js-cookie'
-const API_URL = "http://127.0.0.1:8000";
+import Cookies from "js-cookie";
 
-const api = axios.create();
+export const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+
+const api = axios.create({ baseURL: API_URL });
 
 // Before every request: attach the current access token
 api.interceptors.request.use((config) => {
-    // const token = localStorage.getItem("token");
     const token = Cookies.get("token");
-
     if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
 });
 
-// Only one refresh call at a time (important, see note below)
+// Only one refresh call at a time
 let refreshPromise = null;
 
 const refreshTokens = () => {
     if (!refreshPromise) {
-        refreshPromise = axios.post(`${API_URL}/user/refresh`, {
-            refresh_token: Cookies.get("refresh_token"),
-        })
+        refreshPromise = axios
+            .post(`${API_URL}/user/refresh`, {
+                refresh_token: Cookies.get("refresh_token"),
+            })
             .then((res) => {
                 const { access_token, refresh_token } = res.data.data;
-                // localStorage.setItem("token", access_token);
-                // localStorage.setItem("refresh_token", refresh_token);
-                Cookies.set("token", access_token);
-                Cookies.set("refresh_token", refresh_token);
+                Cookies.set("token", access_token, { secure: true, sameSite: "strict" });
+                Cookies.set("refresh_token", refresh_token, { secure: true, sameSite: "strict" });
             })
             .finally(() => {
                 refreshPromise = null;
@@ -53,13 +51,13 @@ api.interceptors.response.use(
             return Promise.reject(error);
         }
 
-        original._retry = true; // never retry the same request twice
+        original._retry = true;
         try {
             await refreshTokens();
-            return api(original); // same request again, with the new token
+            return api(original);
         } catch (e) {
-            localStorage.removeItem("token");
-            localStorage.removeItem("refresh_token");
+            Cookies.remove("token");
+            Cookies.remove("refresh_token");
             window.location.href = "/login";
             return Promise.reject(e);
         }
